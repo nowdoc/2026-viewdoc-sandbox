@@ -1,0 +1,96 @@
+#!/usr/bin/env python3
+"""Atomic writer for /tmp/kasm_query.{json,env}.
+
+Reads a JSON blob on stdin in the form:
+
+    {"params": {"theme": "dark", "user": "milan"}, "raw": "theme=dark&user=milan"}
+
+…and writes it to /tmp/kasm_query.json (pretty-printed) plus
+/tmp/kasm_query.env (KASM_Q_<UPPER>=<value> lines, shell-sourceable),
+both via a temp-file + rename so readers never see a partial file.
+
+After the write, if /dockerstartup/on_query_update.sh exists and is
+executable, we invoke it once — that's the documented extension point
+for apps inside the desktop to react to URL changes from the parent.
+"""
+from __future__ import annotations
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+
+OUT_JSON = "/tmp/kasm_query.json"
+OUT_ENV = "/tmp/kasm_query.env"
+HOOK = "/dockerstartup/on_query_update.sh"
+
+
+def _atomic_write(path: str, data: str) -> None:
+    d = os.path.dirname(path) or "/tmp"
+    fd, tmp = tempfile.mkstemp(prefix=".kasm_q_", dir=d)
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def main() -> int:
+    blob = sys.stdin.read()
+    if not blob.strip():
+        print("kasm-write-query: empty stdin", file=sys.stderr)
+        return 2
+    try:
+        payload = json.loads(blob)
+    except json.JSONDecodeError as e:
+        print(f"kasm-write-query: bad json: {e}", file=sys.stderr)
+        return 2
+    params = payload.get("params") or {}
+    if not isinstance(params, dict):
+        print("kasm-write-query: params must be object", file=sys.stderr)
+        return 2
+    raw = payload.get("raw") or ""
+
+    _atomic_write(OUT_JSON, json.dumps({"params": params, "raw": raw}, indent=2) + "\n")
+
+    # Shell-quote values so the file remains safely `source`-able even when
+    # values contain spaces or quotes. Use single-quotes + escape any embedded
+    # single-quotes per POSIX-shell convention.
+    def shq(s: str) -> str:
+        return "'" + s.replace("'", "'\\''") + "'"
+
+    lines = [f"KASM_Q_{k.upper()}={shq(v)}" for k, v in params.items()]
+    lines.append(f"KASM_QUERY={shq(raw)}")
+    lines.append("KASM_QUERY_KEYS=" + shq(" ".join(params.keys())))
+    _atomic_write(OUT_ENV, "\n".join(lines) + "\n")
+
+    if os.access(HOOK, os.X_OK):
+        # Fire-and-forget. We don't want a slow hook (e.g. opening a PDF) to
+        # block the sync RPC. stdout/stderr → /tmp/on_query_update.log so an
+        # operator can debug without touching the hook script.
+        try:
+            with open("/tmp/on_query_update.log", "a") as logf:
+                subprocess.Popen(
+                    [HOOK],
+                    stdout=logf,
+                    stderr=subprocess.STDOUT,
+                    stdin=subprocess.DEVNULL,
+                    env={**os.environ, "KASM_QUERY_JSON": OUT_JSON,
+                         "KASM_QUERY_ENV": OUT_ENV},
+                    start_new_session=True,
+                )
+        except Exception as e:
+            print(f"kasm-write-query: hook spawn failed: {e}", file=sys.stderr)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

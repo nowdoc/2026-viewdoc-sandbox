@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>webtop bridge</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%;
+               font-family: system-ui, sans-serif;
+               background: #111; color: #eee; }
+  body { display: flex; flex-direction: column; }
+  #bar  { padding: 6px 10px; background: #222;
+          display: flex; gap: 10px; align-items: center;
+          font-size: 13px; }
+  #bar input { flex: 1; padding: 4px 8px;
+               border: 1px solid #444; background: #111; color: #eee;
+               font-family: ui-monospace, monospace; font-size: 12px; }
+  #status { font-size: 11px; opacity: 0.7; white-space: nowrap; }
+  #viewer { flex: 1; border: 0; width: 100%; background: #000; }
+  .err { color: #f88; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <input id="url-input" type="text" spellcheck="false"
+         placeholder="?open_url=https://example.com/foo.pdf" />
+  <span id="status">idle</span>
+</div>
+<iframe id="viewer"
+        allow="autoplay; microphone; clipboard-read; clipboard-write; fullscreen">
+</iframe>
+<script src="/static/app.js"></script>
+</body>
+</html>

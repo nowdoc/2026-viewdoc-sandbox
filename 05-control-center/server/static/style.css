@@ -1,0 +1,205 @@
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  width: 100%;
+  background: #111;
+  color: #eee;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+}
+
+#status {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: rgba(0, 0, 0, 0.7);
+  color: #ddd;
+  padding: 4px 10px;
+  font-size: 12px;
+  line-height: 18px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  pointer-events: auto;
+  backdrop-filter: blur(2px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+#status .sep { opacity: 0.4; }
+#status-error { color: #ff7a7a; }
+#status-error:not(:empty)::before { content: "· error: "; opacity: 0.4; }
+
+/* -- slot picker --------------------------------------------------- */
+#status .slot-picker-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+#status .slot-label { opacity: 0.55; }
+#status #slot-picker {
+  display: inline-flex;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid #333;
+  border-radius: 3px;
+  background: #181818;
+}
+#status #slot-picker .slot-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: #bbb;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  user-select: none;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+#status #slot-picker .slot-chip:hover { color: #fff; background: #2a2a2a; }
+#status #slot-picker .slot-chip.active {
+  color: #111;
+  background: #cbd96b;
+  border-color: #cbd96b;
+}
+#status #slot-picker .slot-chip.current-lease {
+  border-color: #cbd96b;
+  color: #fff;
+}
+#status #slot-picker .slot-chip-auto { padding: 0 6px; }
+#status #slot-picker .slot-chip[aria-disabled="true"] {
+  opacity: 0.4; cursor: not-allowed;
+}
+
+/* -- URL input ----------------------------------------------------- */
+#status .url-input-wrap {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 1 1 280px;
+  min-width: 220px;
+  border: 1px solid #333;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #181818;
+}
+#status .url-input-wrap:focus-within { border-color: #5aa; }
+#status .url-input-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 6px;
+  background: #1a1a1a;
+  color: #888;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  border-right: 1px solid #2a2a2a;
+}
+#status #url-input {
+  flex: 1 1 auto;
+  background: transparent;
+  color: #eee;
+  border: 0;
+  padding: 2px 6px;
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 16px;
+  outline: none;
+}
+#status #url-input.dirty { background: rgba(204, 204, 136, 0.10); }
+#status #url-input::placeholder { color: #555; }
+
+/* -- buttons (reset / params) ------------------------------------- */
+#status button {
+  background: #222;
+  color: #ddd;
+  border: 1px solid #444;
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 16px;
+}
+#status button:hover { background: #2e2e2e; border-color: #555; }
+#status button#reset-btn:hover { color: #ffb6b6; border-color: #b86060; }
+
+/* -- sync badge ---------------------------------------------------- */
+#status .sync-badge {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  line-height: 10px;
+  font-size: 14px;
+  text-align: center;
+  cursor: help;
+  /* The ● glyph is rendered in colour via fill below — collapse the
+     text colour onto the same hue. */
+}
+#status .sync-badge.sync-idle    { color: #6e6e6e; }
+#status .sync-badge.sync-ok      { color: #4caf50; }
+#status .sync-badge.sync-pending { color: #e6c84a; }
+#status .sync-badge.sync-err     { color: #ff5252; }
+
+/* -- params popup -------------------------------------------------- */
+#params-popup {
+  position: fixed;
+  top: 30px;
+  right: 8px;
+  z-index: 20;
+  max-width: 360px;
+  max-height: 60vh;
+  overflow: auto;
+  background: #1a1a1a;
+  color: #ddd;
+  border: 1px solid #333;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  padding: 6px 10px;
+}
+#params-popup .params-popup-head {
+  font-family: inherit;
+  color: #aaa;
+  padding-bottom: 4px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #2a2a2a;
+}
+#params-popup pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* -- viewport ------------------------------------------------------ */
+#viewport {
+  position: fixed;
+  top: 26px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #000;
+}
+#placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+  font-size: 14px;
+}
+#viewer {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}

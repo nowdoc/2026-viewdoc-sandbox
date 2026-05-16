@@ -1,0 +1,35 @@
+# 06 — LinuxServer.io webtop, minimal standalone test.
+#
+# Goal: prove that a self-contained browser-desktop image gives us audio in
+# the browser without the Kasm Workspaces orchestrator (the gap 05 hits).
+#
+# LSIO `webtop` migrated from KasmVNC to Selkies (WebRTC) in June 2025, so
+# the transport here is WebRTC, not KasmVNC. Audio is on by default
+# (SELKIES_AUDIO_ENABLED defaults to true).
+#
+# Host port map:
+#   5085 -> 3000  (HTTP — usable directly on localhost; some browser APIs
+#                  like the microphone require HTTPS on non-localhost)
+#   5086 -> 3001  (HTTPS — self-signed cert; primary connection method)
+#
+# Bring up:
+#   docker compose up -d
+#   open https://HOST:5086/   (accept self-signed cert)
+# where HOST is whatever name/IP the docker host is reachable on (localhost
+# from the same machine, the LAN IP / DNS name from elsewhere).
+
+services:
+  webtop:
+    image: lscr.io/linuxserver/webtop:ubuntu-xfce
+    container_name: lsio-webtop
+    restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "Etc/UTC"
+    ports:
+      - "5085:3000"
+      - "5086:3001"
+    shm_size: "1gb"
+    volumes:
+      - ./config:/config

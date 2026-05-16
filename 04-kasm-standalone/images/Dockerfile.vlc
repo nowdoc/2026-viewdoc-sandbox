@@ -1,0 +1,19 @@
+FROM kasmweb/vlc:1.16.0
+
+USER root
+
+RUN sed -i 's/-sslOnly /-DisableBasicAuth /g' /dockerstartup/vnc_startup.sh
+
+COPY kasmvnc-no-tls.yaml /etc/kasmvnc/kasmvnc.yaml
+RUN chmod 644 /etc/kasmvnc/kasmvnc.yaml
+
+# Pre-accept VLC's first-run "Privacy and Network Access Policy" dialog by
+# seeding the kasm default profile (which gets copied to /home/kasm-user at
+# startup). Writing directly to /home/kasm-user/.config breaks the profile
+# copy step in /dockerstartup/kasm_default_profile.sh.
+RUN install -d -o 1000 -g 1000 /home/kasm-default-profile/.config/vlc \
+    && printf '[Qt]\nqt-privacy-ask=0\nmetadata-network-access=0\n' \
+       > /home/kasm-default-profile/.config/vlc/vlcrc \
+    && chown -R 1000:1000 /home/kasm-default-profile/.config
+
+USER 1000

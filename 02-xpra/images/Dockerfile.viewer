@@ -1,0 +1,28 @@
+FROM debian:bookworm-slim
+
+# Install xpra (HTML5 server), viewers (xpdf/feh/vlc/mpv), curl, and minimal X stack.
+# xpra-html5 ships the JS client served by xpra over the bind-tcp/--html=on port.
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl \
+        xpra \
+        xvfb \
+        xpdf feh vlc mpv \
+        dbus-x11 \
+        xterm \
+        procps \
+        libjs-jquery libjs-jquery-ui \
+        python3-pil python3-rencode \
+    && rm -rf /var/lib/apt/lists/*
+
+# vlc refuses to run as root by default; allow it.
+RUN sed -i 's/geteuid/getppid/' /usr/bin/vlc || true
+
+# Audio: pulseaudio is not strictly needed for viewing; xpra can run without it.
+# Disable pulseaudio explicitly in xpra args.
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 14500
+ENTRYPOINT ["/entrypoint.sh"]

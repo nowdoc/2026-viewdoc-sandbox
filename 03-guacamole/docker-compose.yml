@@ -1,0 +1,68 @@
+networks:
+  guac_net:
+    name: guac_net
+    driver: bridge
+
+services:
+  guacd:
+    image: guacamole/guacd:1.5.5
+    container_name: guac_guacd
+    restart: unless-stopped
+    networks:
+      - guac_net
+    # No host port mapping — guacd is only reached from the guacamole web
+    # container on the internal docker network.
+
+  guacamole:
+    image: guacamole/guacamole:1.5.5
+    container_name: guac_web
+    restart: unless-stopped
+    depends_on:
+      - guacd
+    environment:
+      GUACD_HOSTNAME: guacd
+      GUACD_PORT: "4822"
+      # json-auth extension: dispatcher signs+encrypts a JSON blob describing
+      # a single VNC connection, POSTs it to /api/tokens, and gets back a
+      # session token that is bound to that connection. No DB, no admin user,
+      # no /etc/guacamole writes. The official image enables json-auth
+      # automatically when JSON_SECRET_KEY is set.
+      # 32 hex chars == 16-byte AES-128 key. CHANGE FOR ANY REAL DEPLOYMENT.
+      JSON_SECRET_KEY: "4c0b569e4c0b569e4c0b569e4c0b569e"
+      JSON_TRUSTED_NETWORKS: "0.0.0.0/0"
+    networks:
+      - guac_net
+    # Bind on ALL host interfaces so other machines on the LAN can reach
+    # the Guacamole web client. Explicit 0.0.0.0 makes the intent obvious.
+    ports:
+      - "0.0.0.0:7080:8080"
+
+  dispatcher:
+    build: ./dispatcher
+    image: guac-dispatcher:latest
+    container_name: guac_dispatcher
+    restart: unless-stopped
+    depends_on:
+      - guacamole
+    environment:
+      GUACAMOLE_INTERNAL_URL: "http://guacamole:8080/guacamole"
+      # PUBLIC_HOST is intentionally unset — the dispatcher derives the host
+      # from the incoming request's Host header so users land on the same
+      # hostname/IP they used. Set this only if you front the dispatcher
+      # with a proxy that rewrites Host (e.g. PUBLIC_HOST: "viewer.example.com").
+      # PUBLIC_HOST: ""
+      GUAC_PUBLIC_PORT: "7080"
+      GUAC_PUBLIC_PATH: "/guacamole"
+      # Must match guacamole's JSON_SECRET_KEY above.
+      JSON_SECRET_KEY: "4c0b569e4c0b569e4c0b569e4c0b569e"
+      VIEWER_IMAGE: "guac-viewer:latest"
+      VIEWER_NETWORK: "guac_net"
+      VIEWER_VNC_PORT: "5900"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - guac_net
+    # Bind on ALL host interfaces so the dispatcher is reachable from
+    # other machines on the LAN.
+    ports:
+      - "0.0.0.0:7081:7081"

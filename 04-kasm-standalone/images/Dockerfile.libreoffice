@@ -1,0 +1,31 @@
+FROM kasmweb/libre-office:1.16.0
+
+USER root
+
+# Same TLS-disable patches as the other kasm-standalone wrappers.
+RUN sed -i 's/-sslOnly /-DisableBasicAuth /g' /dockerstartup/vnc_startup.sh
+COPY kasmvnc-no-tls.yaml /etc/kasmvnc/kasmvnc.yaml
+RUN chmod 644 /etc/kasmvnc/kasmvnc.yaml
+
+# LibreOffice expects a local file path, not an HTTP(S) URL. Replace the
+# stock custom_startup.sh with one that pre-downloads $LAUNCH_URL into
+# /tmp/payload.<ext> before invoking libreoffice. Same supervisor-loop
+# semantics as the upstream.
+COPY libreoffice-custom-startup.sh /dockerstartup/custom_startup.sh
+RUN chmod +x /dockerstartup/custom_startup.sh \
+    && chown 1000:1000 /dockerstartup/custom_startup.sh
+
+# Pre-accept any first-run dialogs in the LibreOffice profile so the document
+# opens straight into the editor, not into a welcome screen.
+RUN install -d -o 1000 -g 1000 /home/kasm-default-profile/.config/libreoffice/4/user \
+    && cat > /home/kasm-default-profile/.config/libreoffice/4/user/registrymodifications.xcu <<'XCU' \
+       && chown -R 1000:1000 /home/kasm-default-profile/.config
+<?xml version="1.0" encoding="UTF-8"?>
+<oor:items xmlns:oor="http://openoffice.org/2001/registry" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <item oor:path="/org.openoffice.Setup/Product"><prop oor:name="ooSetupLastVersion" oor:op="fuse"><value>7.6</value></prop></item>
+  <item oor:path="/org.openoffice.Office.Common/Misc"><prop oor:name="ShowTipOfTheDay" oor:op="fuse"><value>false</value></prop></item>
+  <item oor:path="/org.openoffice.Office.Common/Misc"><prop oor:name="FirstRun" oor:op="fuse"><value>false</value></prop></item>
+</oor:items>
+XCU
+
+USER 1000

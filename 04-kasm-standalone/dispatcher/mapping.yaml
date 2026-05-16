@@ -1,0 +1,68 @@
+# Data-driven extension → kasmweb image rules.
+#
+# The dispatcher reads this file at startup and uses it to classify the
+# incoming `?url=` parameter by file extension, then `docker run`s the
+# matching kasmweb image with the URL injected via the rule's `env` mapping.
+#
+# Each rule:
+#   - kind:        a short label (used in logs / X-Viewer-Kind header).
+#   - extensions:  list of lowercased file extensions WITH leading dot.
+#   - image:       full image ref `kasmweb/<name>:<tag>` — pinned to 1.16.0.
+#   - env:         dict of env vars to set on the container.
+#                  The literal `{url}` is substituted with the user-supplied URL.
+#
+# Order matters: the FIRST rule whose extensions list contains the URL's
+# extension wins. The last rule with `default: true` catches anything else.
+#
+# Image-arch note: kasmweb/chrome is amd64-only at 1.16.0, whereas
+# kasmweb/chromium is multi-arch (amd64+arm64). We pick chromium so the
+# prototype runs natively on this arm64 host.
+
+rules:
+  - kind: doc
+    extensions: [".pdf", ".html", ".htm"]
+    image: "kasm2/chromium-notls:latest"
+    env:
+      LAUNCH_URL: "{url}"
+
+  - kind: image
+    extensions: [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"]
+    image: "kasm2/chromium-notls:latest"
+    env:
+      LAUNCH_URL: "{url}"
+
+  - kind: video
+    extensions: [".mp4", ".mkv", ".webm", ".mov", ".avi"]
+    image: "kasm2/vlc-notls:latest"
+    env:
+      APP_ARGS: "{url}"
+
+  - kind: audio
+    extensions: [".mp3", ".wav", ".flac", ".ogg", ".m4a", ".opus"]
+    image: "kasm2/vlc-notls:latest"
+    env:
+      APP_ARGS: "{url}"
+
+  - kind: office
+    extensions: [".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".odt", ".ods", ".odp", ".rtf", ".csv"]
+    image: "kasm2/libreoffice-notls:latest"
+    env:
+      LAUNCH_URL: "{url}"
+
+  # Full-desktop sessions, triggered by /?desktop=<name>. The `extensions`
+  # list doubles as the lookup key for the desktop name (no file ext match).
+  # Optional ?url= alongside is exposed to the container as LAUNCH_URL; the
+  # wrapper's custom_startup.sh xdg-opens it after desktop_ready (or no-ops
+  # when the value is empty).
+  - kind: desktop
+    extensions: ["ubuntu"]
+    image: "kasm2/ubuntu-notls:latest"
+    env:
+      LAUNCH_URL: "{url}"
+
+  # Catch-all: open unknown URLs in chromium.
+  - kind: doc
+    default: true
+    image: "kasm2/chromium-notls:latest"
+    env:
+      LAUNCH_URL: "{url}"

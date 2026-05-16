@@ -1,0 +1,55 @@
+# kasm-standalone prototype.
+#
+# Only the dispatcher runs under compose. Viewer containers (kasmweb/*)
+# are `docker run`'d by the dispatcher at request time and removed on exit
+# (--rm). The dispatcher reaches the host docker engine via the mounted
+# /var/run/docker.sock and reaches back to the host (for readiness polling)
+# via host.docker.internal.
+#
+# Network-accessibility notes (same pattern as 02-xpra, 03-guacamole):
+#   - Dispatcher's port mapping deliberately omits a bind IP, so docker
+#     publishes 6081 on 0.0.0.0 and ::. The dispatcher is therefore
+#     reachable from any LAN interface.
+#   - Viewer containers are spawned with `-p <picked_port>:6901` (no bind
+#     IP) by the dispatcher → published on all interfaces too.
+#   - The 302 Location uses the request's Host header (port stripped) +
+#     the viewer's host port, so a client on a remote LAN host stays on
+#     that hostname/IP. Override with PUBLIC_HOST if needed.
+
+networks:
+  kasm-net:
+    name: kasm-net
+    driver: bridge
+
+services:
+  dispatcher:
+    build:
+      context: ./dispatcher
+      dockerfile: Dockerfile
+    image: kasm-dispatcher:latest
+    container_name: kasm-dispatcher
+    restart: unless-stopped
+    networks:
+      - kasm-net
+    # No bind IP -> docker binds on all interfaces. Do NOT prefix 127.0.0.1.
+    ports:
+      - "${DISPATCHER_PORT:-6081}:6081"
+    # host-gateway resolves to the host's IP from inside the container —
+    # used by the dispatcher to poll the host-published viewer ports for
+    # readiness. Works on Linux from compose 20.10+.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DISPATCHER_PORT: "6081"
+      KASM_CONTAINER_PORT: "6901"
+      VIEWER_PORT_RANGE_START: "${VIEWER_PORT_RANGE_START:-6082}"
+      VIEWER_PORT_RANGE_END:   "${VIEWER_PORT_RANGE_END:-6099}"
+      KASM_SVC_HTTPS_VALUE:    "${KASM_SVC_HTTPS_VALUE:-disabled}"
+      READY_TIMEOUT_S:         "${READY_TIMEOUT_S:-60}"
+      PUBLIC_HOST:             "${PUBLIC_HOST:-}"
+      VIEWER_MEMORY:           "${VIEWER_MEMORY:-2g}"
+      VIEWER_CPUS:             "${VIEWER_CPUS:-2.0}"
+    volumes:
+      # Lets the dispatcher talk to the host docker engine to spawn viewers.
+      # Viewers are SIBLING containers on the host, not children.
+      - /var/run/docker.sock:/var/run/docker.sock

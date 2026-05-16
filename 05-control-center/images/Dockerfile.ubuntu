@@ -1,0 +1,46 @@
+FROM kasmweb/ubuntu-noble-desktop:1.18.0
+
+USER root
+
+# Disable TLS on the KasmVNC NoVNC endpoint so the iframe can load it as
+# plain http (otherwise the user gets a self-signed-cert interstitial).
+RUN sed -i 's/-sslOnly /-DisableBasicAuth /g' /dockerstartup/vnc_startup.sh
+COPY kasmvnc-no-tls.yaml /etc/kasmvnc/kasmvnc.yaml
+RUN chmod 644 /etc/kasmvnc/kasmvnc.yaml
+
+# High-quality streaming defaults. Upstream ships:
+#   MAX_FRAME_RATE=24
+#   VNCOPTIONS=-PreferBandwidth -DynamicQualityMin=4 -DynamicQualityMax=7 -DLP_ClipDelay=0
+# which biases for low bandwidth (blurry under motion, slow text repaint).
+# Override to prefer image quality + smoother frames, and bump the clipboard
+# per-direction byte caps so large copy/paste survives. The control-center
+# can still override either via `docker run -e` if a deploy needs to trade
+# quality for bandwidth.
+ENV MAX_FRAME_RATE=30
+ENV VNCOPTIONS="-DynamicQualityMin=7 -DynamicQualityMax=9 -DLP_ClipDelay=0 -DLP_ClipSendMax=10485760 -DLP_ClipAcceptMax=10485760"
+
+# Noble 1.18's xfce xinitrc runs `systemctl --user list-jobs` to detect a
+# systemd-user session before continuing. There's no systemd in this
+# container, AND under QEMU amd64-on-aarch64 the call doesn't fail fast — it
+# spins at 100% CPU on a poll syscall, so xfce4-session never advances and
+# the framebuffer stays blank. Short-circuit the check so the rest of the
+# session starts immediately. We only lose XAUTHLOCALHOSTNAME-via-dbus on
+# the systemd-user-session path, which isn't applicable here.
+RUN sed -i 's|systemctl --user list-jobs >/dev/null 2>&1|false|' /etc/xdg/xfce4/xinitrc
+
+# Boot-time helper. Writes /tmp/kasm_query.{json,env} from the KASM_Q_* env
+# vars and (if LAUNCH_URL is set) xdg-opens it after desktop_ready. With no
+# LAUNCH_URL it's a no-op, so /?desktop=ubuntu still works for plain
+# "give me a desktop" sessions.
+COPY ubuntu-custom-startup.sh /dockerstartup/custom_startup.sh
+RUN chmod +x /dockerstartup/custom_startup.sh \
+    && chown 1000:1000 /dockerstartup/custom_startup.sh
+
+# Live URL-param injector. The control-center server pipes a JSON blob on
+# stdin to this script via `docker exec`; it atomic-writes both files and
+# fires the optional update hook.
+COPY kasm-write-query     /usr/local/bin/kasm-write-query
+COPY on_query_update.sh   /dockerstartup/on_query_update.sh
+RUN chmod 0755 /usr/local/bin/kasm-write-query /dockerstartup/on_query_update.sh
+
+USER 1000

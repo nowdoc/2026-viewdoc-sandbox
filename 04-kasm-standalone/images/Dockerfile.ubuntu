@@ -1,0 +1,25 @@
+FROM kasmweb/ubuntu-jammy-desktop:1.16.0
+
+USER root
+
+# Same TLS-disable patches as the other kasm-standalone wrappers.
+RUN sed -i 's/-sslOnly /-DisableBasicAuth /g' /dockerstartup/vnc_startup.sh
+COPY kasmvnc-no-tls.yaml /etc/kasmvnc/kasmvnc.yaml
+RUN chmod 644 /etc/kasmvnc/kasmvnc.yaml
+
+# Optional URL opener. If $LAUNCH_URL is set when the container starts,
+# this script downloads it (if HTTP/HTTPS) and `xdg-open`s the local
+# path once the desktop is ready. With no $LAUNCH_URL it's a no-op, so
+# /?desktop=ubuntu still works for plain "give me a desktop" sessions.
+COPY ubuntu-custom-startup.sh /dockerstartup/custom_startup.sh
+RUN chmod +x /dockerstartup/custom_startup.sh \
+    && chown 1000:1000 /dockerstartup/custom_startup.sh
+
+# Live URL-param injector for the 05 control-center: rewrites
+# /tmp/kasm_query.{json,env} atomically and fires the optional update hook.
+# Stdin = JSON {"params":{...}, "raw":"..."}.
+COPY kasm-write-query /usr/local/bin/kasm-write-query
+COPY on_query_update.sh /dockerstartup/on_query_update.sh
+RUN chmod 0755 /usr/local/bin/kasm-write-query /dockerstartup/on_query_update.sh
+
+USER 1000

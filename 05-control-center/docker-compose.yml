@@ -1,0 +1,79 @@
+# control-center prototype (05).
+#
+# Self-contained: builds its own kasm2-cc/ubuntu image (see images/), spawns
+# a small POOL of pre-warmed containers at startup, and acts as an iframe
+# bridge — the user's browser-URL changes are `docker exec`'d into the leased
+# pool slot's /tmp/kasm_query.{json,env}.
+#
+# No dependency on the 04 stack.
+#
+# Two compose profiles:
+#   default          → runs only the control-center.
+#   --profile build  → also runs `image-builder` once, which builds the
+#                       kasm2-cc/ubuntu image and exits.
+
+services:
+  # Builds the pool image. Run once with: `docker compose --profile build up
+  # --build image-builder` (or just `docker build` manually; see README).
+  # Sharing the host docker socket so the build lands in the host's daemon.
+  image-builder:
+    profiles: ["build"]
+    image: docker:cli
+    container_name: kasm2-cc-image-builder
+    entrypoint: ["sh", "-c"]
+    command: ["docker build -t kasm2-cc/ubuntu:latest /images && echo built"]
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./images:/images:ro
+
+  control-center:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: kasm2-control-center:latest
+    container_name: kasm2-control-center
+    restart: unless-stopped
+    # No bind IP -> docker binds on 0.0.0.0 + ::. LAN-reachable.
+    ports:
+      - "${CONTROL_CENTER_PORT:-5081}:5081"
+    extra_hosts:
+      # Lets the control-center poll host.docker.internal:<pool_port>/ for
+      # slot readiness (pool containers are SIBLINGS on the host, not children).
+      - "host.docker.internal:host-gateway"
+    environment:
+      CONTROL_CENTER_PORT: "5081"
+      VIEWER_POOL_SIZE:        "${VIEWER_POOL_SIZE:-3}"
+      VIEWER_PORT_RANGE_START: "${VIEWER_PORT_RANGE_START:-5082}"
+      POOL_IMAGE:              "${POOL_IMAGE:-kasm2-cc/ubuntu:latest}"
+      POOL_INSTANCE:           "${POOL_INSTANCE:-default}"
+      READY_TIMEOUT_S:         "${READY_TIMEOUT_S:-180}"
+      KASM_SVC_HTTPS_VALUE:    "${KASM_SVC_HTTPS_VALUE:-disabled}"
+      PUBLIC_HOST:             "${PUBLIC_HOST:-}"
+      VIEWER_MEMORY:           "${VIEWER_MEMORY:-2g}"
+      VIEWER_CPUS:             "${VIEWER_CPUS:-2.0}"
+      # Stream quality + clipboard knobs (NoVNC URL params). Defaults are
+      # tuned for "high quality out of the box" — see server.py for ranges.
+      VIEWER_QUALITY:              "${VIEWER_QUALITY:-9}"
+      VIEWER_COMPRESSION:          "${VIEWER_COMPRESSION:-2}"
+      VIEWER_DYNAMIC_QUALITY_MIN:  "${VIEWER_DYNAMIC_QUALITY_MIN:-7}"
+      VIEWER_DYNAMIC_QUALITY_MAX:  "${VIEWER_DYNAMIC_QUALITY_MAX:-9}"
+      VIEWER_PREFER_LOCAL_CURSOR:  "${VIEWER_PREFER_LOCAL_CURSOR:-1}"
+      VIEWER_CLIPBOARD_UP:         "${VIEWER_CLIPBOARD_UP:-1}"
+      VIEWER_CLIPBOARD_DOWN:       "${VIEWER_CLIPBOARD_DOWN:-1}"
+      VIEWER_CLIPBOARD_SEAMLESS:   "${VIEWER_CLIPBOARD_SEAMLESS:-1}"
+      VIEWER_RESIZE:               "${VIEWER_RESIZE:-remote}"
+      # Dual-stack HTTP+TLS on CONTROL_CENTER_PORT. Off -> plain HTTP only.
+      TLS_ENABLED:                 "${TLS_ENABLED:-1}"
+      # Subject Alt Names for the auto-generated self-signed cert. Unset
+      # → server.py default (DNS:localhost,IP:127.0.0.1,IP:::1). Set in
+      # .env to add the LAN / mDNS hostnames you actually hit.
+      TLS_CERT_SAN:                "${TLS_CERT_SAN:-}"
+    volumes:
+      # The pool spawn + docker exec path needs the host docker socket.
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Persist the self-signed TLS cert across restarts so the user doesn't
+      # have to re-accept it on every recreate. See server.py → _ensure_self_signed_cert.
+      - cc-state:/app/state
+
+volumes:
+  cc-state:

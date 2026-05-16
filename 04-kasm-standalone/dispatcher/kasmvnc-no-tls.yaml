@@ -1,0 +1,24 @@
+# Bind-mounted into every spawned kasmweb/* container at
+# /etc/kasmvnc/kasmvnc.yaml by the dispatcher.
+#
+# Why: the default yaml shipped in /usr/share/kasmvnc/kasmvnc_defaults.yaml
+# has `network.ssl.require_ssl: true`, and that wins over CLI alone if you
+# strip the `-sslOnly` flag from the startup script. Both need to be off
+# for KasmVNC to actually serve plain HTTP on :6901.
+#
+# The other yaml keys are copied from the image's own /etc/kasmvnc/kasmvnc.yaml
+# so the spawned container still finds its self-signed cert (used elsewhere
+# inside the container — e.g. for the audio websocket, even though we disable
+# that service) and its UDP relay settings.
+
+network:
+  ssl:
+    require_ssl: false
+    pem_certificate: ${HOME}/.vnc/self.pem
+    pem_key: ${HOME}/.vnc/self.pem
+  udp:
+    public_ip: 127.0.0.1
+runtime_configuration:
+  allow_override_standard_vnc_server_settings: true
+  allow_override_list:
+    - pointer.enabled

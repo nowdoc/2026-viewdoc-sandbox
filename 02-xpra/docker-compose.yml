@@ -1,0 +1,56 @@
+# xpra-viewer prototype
+#
+# Two pieces:
+#   1. `viewer` is a one-shot image (not started by compose; built only). The
+#      dispatcher `docker run`s it on demand, mapping the container's xpra port
+#      to a host port it picks from VIEWER_PORT_RANGE_START..END (default
+#      9082-9099). No bind-IP prefix is used, so docker publishes the host port
+#      on ALL interfaces.
+#   2. `dispatcher` is a tiny stdlib-Python HTTP server that turns
+#      `GET /?url=<asset>` into a fresh viewer container + a 302 to it.
+#
+# Network-accessibility notes:
+#   - The dispatcher's port mapping deliberately omits a bind IP, so docker
+#     binds on 0.0.0.0/::. Reachable from any host on the LAN.
+#   - The dispatcher's 302 reuses the Host header of the incoming request as
+#     the host part of the Location, so a client at 192.168.x.y stays on
+#     192.168.x.y (not localhost). PUBLIC_HOST overrides this if needed.
+#   - Viewer containers publish their port on 0.0.0.0/:: (no bind-IP). Verify
+#     with `docker inspect <id>` -> NetworkSettings.Ports.
+
+networks:
+  xpra-net:
+    name: xpra-net
+    driver: bridge
+
+services:
+  dispatcher:
+    build:
+      context: ./dispatcher
+      dockerfile: Dockerfile
+    image: xpra-dispatcher:latest
+    container_name: xpra-dispatcher
+    restart: unless-stopped
+    networks:
+      - xpra-net
+    # No bind IP -> docker binds on all interfaces. Do NOT prefix 127.0.0.1.
+    ports:
+      - "9081:9081"
+    # host.docker.internal lets the dispatcher reach back to the host (where
+    # the spawned viewer containers publish their ports) for the readiness
+    # poll. Works on Linux from compose v20.10+ via the host-gateway alias.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DISPATCHER_PORT: "9081"
+      VIEWER_IMAGE: "xpra-viewer:latest"
+      XPRA_CONTAINER_PORT: "14500"
+      IDLE_TTL: "900"
+      # PUBLIC_HOST: ""  # leave empty; dispatcher derives from Host header.
+      VIEWER_PORT_RANGE_START: "9082"
+      VIEWER_PORT_RANGE_END: "9099"
+    volumes:
+      # Lets the dispatcher container talk to the host's docker daemon to
+      # spawn viewer containers. The viewer containers run as siblings, not
+      # children — their ports are mapped on the host.
+      - /var/run/docker.sock:/var/run/docker.sock

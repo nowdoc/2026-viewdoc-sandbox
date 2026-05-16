@@ -1,0 +1,15 @@
+FROM lscr.io/linuxserver/webtop:ubuntu-xfce
+
+# vlc for media URLs; xdg-utils brings xdg-open for everything else (Firefox
+# ships in the base image). Skipping LibreOffice keeps the layer thin.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends vlc xdg-utils \
+    && rm -rf /var/lib/apt/lists/*
+
+# Same in-container contract as 05: an atomic writer that dumps
+# /tmp/webtop_query.{json,env} from a JSON blob on stdin, then fires the
+# update hook as a detached child.
+COPY webtop-write-query   /usr/local/bin/webtop-write-query
+COPY on_query_update.sh   /usr/local/bin/webtop-on-query-update.sh
+RUN chmod 0755 /usr/local/bin/webtop-write-query \
+              /usr/local/bin/webtop-on-query-update.sh

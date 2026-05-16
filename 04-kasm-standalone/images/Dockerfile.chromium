@@ -1,0 +1,16 @@
+FROM kasmweb/chromium:1.16.0
+
+USER root
+
+# 1. Strip -sslOnly from the KasmVNC startup invocation so the server
+#    accepts plain HTTP/ws. Replace it with -DisableBasicAuth (also a
+#    no-value flag) so / serves the NoVNC index without prompting for
+#    HTTP basic auth — otherwise ?password=&autoconnect=1 never runs.
+RUN sed -i 's/-sslOnly /-DisableBasicAuth /g' /dockerstartup/vnc_startup.sh
+
+# 2. Default kasmvnc.yaml ships with network.ssl.require_ssl: true which
+#    overrides the CLI. Overwrite it with our no-TLS variant.
+COPY kasmvnc-no-tls.yaml /etc/kasmvnc/kasmvnc.yaml
+RUN chmod 644 /etc/kasmvnc/kasmvnc.yaml
+
+USER 1000

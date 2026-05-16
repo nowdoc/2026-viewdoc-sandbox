@@ -1,0 +1,50 @@
+# 07 — control-center over LSIO webtop (MVP).
+#
+# Same iframe-bridge idea as 05, but on the LSIO webtop image so we get
+# audio/mic/uploads in the browser. Single fixed slot (no pool). HTTPS only
+# on the webtop side (LSIO's built-in self-signed cert) — control-center is
+# plain HTTP for MVP simplicity. See README for the one-time cert bootstrap.
+#
+# Bring up:
+#   docker compose up -d --build
+
+services:
+  webtop:
+    image: webtop-bridge-webtop:latest
+    build:
+      context: ./images
+      dockerfile: Dockerfile.webtop
+    container_name: webtop-bridge-webtop
+    restart: unless-stopped
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: "Etc/UTC"
+    ports:
+      - "5088:3001"
+    shm_size: "1gb"
+    volumes:
+      - ./config:/config
+
+  control-center:
+    image: webtop-bridge-cc:latest
+    build:
+      context: ./server
+    container_name: webtop-bridge-cc
+    restart: unless-stopped
+    ports:
+      - "5087:5087"
+    environment:
+      CONTROL_CENTER_PORT: "5087"
+      WEBTOP_CONTAINER: "webtop-bridge-webtop"
+      VIEWER_PORT: "5088"
+      # Default SAN is intentionally minimal. Set CERT_SAN in .env (or
+      # the host environment) to add the LAN/DNS name(s) you'll be
+      # hitting, e.g.:
+      #   CERT_SAN=DNS:localhost,DNS:viewer.lan,DNS:*.viewer.lan,IP:127.0.0.1
+      CERT_SAN: "${CERT_SAN:-DNS:localhost,IP:127.0.0.1}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./certs:/app/certs
+    depends_on:
+      - webtop

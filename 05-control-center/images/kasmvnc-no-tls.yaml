@@ -1,0 +1,33 @@
+network:
+  ssl:
+    require_ssl: false
+    pem_certificate: ${HOME}/.vnc/self.pem
+    pem_key: ${HOME}/.vnc/self.pem
+  udp:
+    public_ip: 127.0.0.1
+# KasmVNC has clipboard ON by default; we explicitly raise the per-direction
+# size cap so a large copy/paste from inside the desktop (e.g. an SSH key or
+# a chunk of source code) isn't silently truncated. The clipboard widget
+# (sidebar) works regardless of secure context; ctrl-c/v passthrough requires
+# the parent page to be served over HTTPS or localhost (browser policy).
+data_loss_prevention:
+  clipboard:
+    client_to_server:
+      enabled: true
+      size: 10485760
+    server_to_client:
+      enabled: true
+      size: 10485760
+      primary_clipboard_enabled: true
+    delay_between_operations: 0
+runtime_configuration:
+  # NOTE: this list is checked against a hard-coded allow-list in the
+  # KasmVNC binary; only known-good keys are accepted. Image-quality
+  # toggles aren't on that list — we set them via -FrameRate / VNCOPTIONS
+  # (see Dockerfile.ubuntu) instead.
+  allow_override_standard_vnc_server_settings: true
+  allow_override_list:
+    - pointer.enabled
+    - data_loss_prevention.clipboard.client_to_server.size
+    - data_loss_prevention.clipboard.server_to_client.size
+    - data_loss_prevention.clipboard.delay_between_operations

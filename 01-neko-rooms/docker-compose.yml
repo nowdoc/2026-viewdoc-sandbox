@@ -1,0 +1,118 @@
+# neko-rooms prototype
+# ---------------------
+# Single-host docker compose stack with three building blocks:
+#
+#   1. firefox-launch       (build) — a thin wrapper over the upstream
+#                           ghcr.io/m1k1o/neko/firefox image that honours a
+#                           LAUNCH_URL env var, so the room opens directly
+#                           on the URL the dispatcher passes.
+#   2. neko-rooms           — spawns ephemeral neko containers (one room
+#                             per requested URL).
+#   3. dispatcher           — tiny HTTP service: accepts ?url=..., picks
+#                             firefox-launch or stock vlc based on file
+#                             extension, then 302s into the new room.
+#
+# Important: every port mapping binds 0.0.0.0 (default when no bind-IP is
+# specified) so the stack is reachable from other machines on the LAN,
+# not just localhost. Do NOT prepend 127.0.0.1: to any port spec.
+
+networks:
+  neko-rooms-net:
+    name: neko-rooms-net
+
+services:
+  # ----------------------------------------------------------------------
+  # Build-only side-car: builds the custom firefox-launch image at
+  # `docker compose up --build` time, then exits. neko-rooms references it
+  # by tag (`kasm2/neko-firefox-launch:latest`) when spawning rooms.
+  # ----------------------------------------------------------------------
+  firefox-launch-build:
+    build: ./firefox-launch
+    image: kasm2/neko-firefox-launch:latest
+    # `true` exits 0 — we only want the image baked, not a running container.
+    command: ["true"]
+    restart: "no"
+    profiles: ["build"]   # keep it out of `docker compose up` runtime set
+
+  # ----------------------------------------------------------------------
+  # neko-rooms — admin API + UI for managing ephemeral neko rooms.
+  # ----------------------------------------------------------------------
+  neko-rooms:
+    image: m1k1o/neko-rooms:latest
+    container_name: neko-rooms
+    restart: unless-stopped
+    environment:
+      NEKO_ROOMS_BIND: ":8080"
+
+      # External URL neko-rooms uses when building room URLs returned via
+      # the API. PUBLIC_HOST comes from .env (default: the host's LAN IP).
+      # The trailing slash matters.
+      NEKO_ROOMS_INSTANCE_URL: "http://${PUBLIC_HOST}:8080/"
+
+      # IP neko advertises to WebRTC peers for NAT traversal. Must be the
+      # host's reachable address so remote clients can connect to media
+      # ports.
+      NEKO_ROOMS_NAT1TO1: "${PUBLIC_HOST}"
+
+      # Mux all WebRTC traffic into one small port range we pre-publish.
+      NEKO_ROOMS_MUX: "true"
+      NEKO_ROOMS_EPR: "59000-59049"
+
+      # Docker network neko-rooms attaches new room containers to.
+      NEKO_ROOMS_INSTANCE_NETWORK: "neko-rooms-net"
+
+      # Path prefix for room URLs under the instance URL.
+      NEKO_ROOMS_PATH_PREFIX: "/room/"
+
+      # Traefik integration off — rooms are reached directly via
+      # neko-rooms' own reverse proxy on port 8080.
+      NEKO_ROOMS_TRAEFIK_ENABLED: "false"
+
+      # Whitelist of images this neko-rooms instance is allowed to spawn.
+      # neko-rooms rejects any RoomSettings.neko_image that isn't in this
+      # list — see internal/room/manager.go: "invalid neko image".
+      NEKO_ROOMS_NEKO_IMAGES: |
+        kasm2/neko-firefox-launch:latest
+        ghcr.io/m1k1o/neko/firefox:latest
+        ghcr.io/m1k1o/neko/vlc:latest
+        ghcr.io/m1k1o/neko/chromium:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      # 0.0.0.0 binding so the API/UI is reachable from the LAN.
+      # The WebRTC ports in NEKO_ROOMS_EPR are published by each room
+      # container itself, so we deliberately do NOT pre-publish the range
+      # here (it'd conflict with the per-room bindings).
+      - "8080:8080"
+    networks:
+      - neko-rooms-net
+
+  # ----------------------------------------------------------------------
+  # dispatcher — classifies a URL by extension and asks neko-rooms to
+  # spawn the right room, then 302s the user into it.
+  # ----------------------------------------------------------------------
+  dispatcher:
+    build: ./dispatcher
+    image: kasm2/neko-rooms-dispatcher:latest
+    container_name: neko-rooms-dispatcher
+    restart: unless-stopped
+    environment:
+      # Where the dispatcher talks to the neko-rooms admin API internally.
+      NEKO_ROOMS_API: "http://neko-rooms:8080"
+
+      # Images the dispatcher hands to neko-rooms based on URL type.
+      FIREFOX_IMAGE: "kasm2/neko-firefox-launch:latest"
+      VLC_IMAGE: "ghcr.io/m1k1o/neko/vlc:latest"
+
+      # Optional: force the dispatcher's 302 Location host instead of using
+      # the request's Host header. Leave empty in normal operation.
+      PUBLIC_HOST: "${DISPATCHER_PUBLIC_HOST:-}"
+
+      # Path prefix used by neko-rooms when routing rooms.
+      NEKO_ROOMS_PATH_PREFIX: "/room/"
+    ports:
+      - "8081:8081"
+    depends_on:
+      - neko-rooms
+    networks:
+      - neko-rooms-net
